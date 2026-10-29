@@ -1,0 +1,462 @@
+var SPREADSHEET_URL = "";
+var ADMIN_SHEET_NAME = "Admin";
+var ALERT_SHEET_NAME = "Alerts";
+var ss = SpreadsheetApp.openByUrl(SPREADSHEET_URL);
+var adminSheet = ss.getSheetByName(ADMIN_SHEET_NAME);
+var alertSheet = ss.getSheetByName(ALERT_SHEET_NAME);
+
+function main(){
+   
+  //--COLUMNS--//
+  var alertLevelColumn = 1;
+  var dateColumn = 4;
+  var attributeColumn = 6;
+  var attributeOperatorColumn = 7;
+  var attributeParamColumn = 8;  
+  //metrics (previous)
+  var thresholdMetricColumn_prev = 10;
+  var thresholdOperatorColumn_prev = 11;
+  var thresholdParamColumn_prev = 12;
+  //metrics (current)
+  var thresholdMetricColumn_curr = 14;
+  var thresholdOperatorColumn_curr = 15;
+  var thresholdParamColumn_curr = 16;
+  //alert metrics
+  var alertMetricColumn = 18;
+  var alertOperatorColumn = 19;
+  var alertParamColumn = 20;
+  //email addresses
+  var emailColumn = 22;
+  
+  Date.prototype.yyyymmdd = function() {
+    var yyyy = this.getFullYear().toString();
+    var mm = (this.getMonth()+1).toString(); // getMonth() is zero-based
+    var dd  = this.getDate().toString();
+    return yyyy + (mm[1]?mm:"0"+mm[0]) + (dd[1]?dd:"0"+dd[0]); // padding
+  };
+  
+  //read values from sheet
+  //var reportType = adminSheet.getRange(3, alertLevelColumn).getValue()
+  var reportType = "AdGroup";
+  
+  var currentPeriodStartsNDaysAgo = adminSheet.getRange(6, dateColumn).getValue();
+  var currentPeriodEndsNDaysAgo = adminSheet.getRange(7, dateColumn).getValue();
+  var previousPeriodStartsNDaysAgo = adminSheet.getRange(3, dateColumn).getValue();
+  var previousPeriodEndsNDaysAgo = adminSheet.getRange(4, dateColumn).getValue();
+  
+  //turn days ago into dates (YYYYMMMDD)
+  var date = new Date();
+  preStartDate = new Date(date.getTime()-(previousPeriodStartsNDaysAgo*24 * 60 * 60 * 1000));
+  preEndDate = new Date(date.getTime()-(previousPeriodEndsNDaysAgo*24 * 60 * 60 * 1000));
+  postStartDate = new Date(date.getTime()-(currentPeriodStartsNDaysAgo *24 * 60 * 60 * 1000));
+  postEndDate = new Date(date.getTime()-(currentPeriodEndsNDaysAgo *24 * 60 * 60 * 1000));
+  
+  var compareStartDate = preStartDate.yyyymmdd();
+  var compareEndDate = preEndDate.yyyymmdd();
+  var startDate= postStartDate.yyyymmdd();
+  var endDate = postEndDate.yyyymmdd();
+  
+  Logger.log(startDate + " - " + endDate + " - " + compareStartDate + " - " + compareEndDate);
+  //threshold (filter) metrics
+  var thresholdMetrics_prev = [];
+  var thresholdOperators_prev = [];
+  var thresholdParams_prev = [];
+  
+  var thresholdMetrics_curr = [];
+  var thresholdOperators_curr = [];
+  var thresholdParams_curr = [];
+  
+  var attributes = [];
+  var attributeOperators = [];
+  var attributeParams = [];
+  
+  var alertMetrics = [];
+  var alertParams = [];
+  var alertOperators = [];
+  
+  //grab emails from sheet, but don't add duplicates
+  var emails = [];
+  var row = 3;
+  while(adminSheet.getRange(row, emailColumn).getValue()){
+    emails.indexOf(adminSheet.getRange(row, emailColumn).getValue()) === -1 ? emails.push(adminSheet.getRange(row, emailColumn).getValue()) : Logger.log("Email already exists, removing the duplicate");row++;
+  }
+  
+  var moneyMetrics = ["TargetCpa","CpvBid","CpmBid","CpcBid","CostPerConversion","CostPerAllConversion","Cost","AverageCpm","AverageCpc","AverageCost","ActiveViewMeasurableCost","ActiveViewCpm"]
+  //threshold (filter) metrics - prev
+  var row = 4;
+  while(adminSheet.getRange(row, thresholdMetricColumn_prev).getValue()){
+    var currentMetric = adminSheet.getRange(row, thresholdMetricColumn_prev).getValue()
+    var currentMetricParam = adminSheet.getRange(row, thresholdParamColumn_prev).getValue()
+    
+    if(moneyMetrics.indexOf(currentMetric)>-1){
+      currentMetricParam = currentMetricParam*1000000;
+    }
+
+    thresholdMetrics_prev.push(currentMetric);
+    thresholdOperators_prev.push(adminSheet.getRange(row, thresholdOperatorColumn_prev).getValue());
+    thresholdParams_prev.push(currentMetricParam);
+    row++;  
+  }
+  //threshold (filter) metrics - curr
+  var row = 4;
+  while(adminSheet.getRange(row, thresholdMetricColumn_curr).getValue()){
+    var currentMetric = adminSheet.getRange(row, thresholdMetricColumn_curr).getValue()
+    var currentMetricParam = adminSheet.getRange(row, thresholdParamColumn_curr).getValue()
+    
+    if(moneyMetrics.indexOf(currentMetric)>-1){
+      currentMetricParam = currentMetricParam*1000000;
+    }
+
+    thresholdMetrics_curr.push(currentMetric);
+    thresholdOperators_curr.push(adminSheet.getRange(row, thresholdOperatorColumn_curr).getValue());
+    thresholdParams_curr.push(currentMetricParam);
+    row++;  
+  }
+  //alert metrics
+  row = 4;
+  while(adminSheet.getRange(row, alertMetricColumn).getValue()){
+
+    alertMetrics.push(adminSheet.getRange(row, alertMetricColumn).getValue());
+    alertParams.push(adminSheet.getRange(row, alertParamColumn).getValue());
+    alertOperators.push(adminSheet.getRange(row, alertOperatorColumn).getValue());
+    row++;
+  }
+  //attribute filters
+   row = 4;
+  while(adminSheet.getRange(row, attributeColumn).getValue()){
+    attributes.push(adminSheet.getRange(row, attributeColumn).getValue());
+    attributeParams.push(adminSheet.getRange(row, attributeParamColumn).getValue());
+    attributeOperators.push(adminSheet.getRange(row, attributeOperatorColumn).getValue());
+    row++;
+  }
+  
+  var equalIndex =   attributeOperators.indexOf("EQUALS");
+  attributeOperators[equalIndex] = "=";
+  equalIndex =   attributeOperators.indexOf("NOT_EQUALS");
+  attributeOperators[equalIndex] = "!=";
+  var allMetrics = thresholdMetrics_prev.concat(alertMetrics);
+  
+  var hasAttributes = attributes.length>0 ? true : false
+  var hasthresholdMetrics_prev = thresholdMetrics_prev.length>0 ? true : false
+  var hasthresholdMetrics_curr = thresholdMetrics_curr.length>0 ? true : false
+  
+  var adGroups = {};
+  var compareAdGroups = {};
+  var compareRun = false;
+  for(var ii = 0;ii<2;ii++){
+    if(ii==1){compareRun = true;};
+     
+    //build up where string
+    var whereString = "WHERE ";
+    if(hasAttributes){
+      for(var i in attributes){
+        whereString += attributes[i] + " "
+        whereString += attributeOperators[i] + " '"
+        whereString += attributeParams[i] + "' "
+        whereString += (attributes.length-1).toFixed(0) > i ? " AND " : " "
+      }
+    }
+    
+     if(hasthresholdMetrics_curr && !compareRun){
+       if(hasAttributes){whereString+=" AND "}
+      for(var i in thresholdMetrics_curr){
+        whereString += thresholdMetrics_curr[i] + " "
+        whereString += thresholdOperators_curr[i] + " "
+        whereString += thresholdParams_curr[i] + " "
+        whereString += (thresholdMetrics_curr.length-1).toFixed(0) > i ? " AND " : " "
+      }
+    }
+    
+
+    if(hasthresholdMetrics_prev && compareRun){
+       if(hasAttributes){whereString+=" AND "}
+      for(var i in thresholdMetrics_prev){
+        whereString += thresholdMetrics_prev[i] + " "
+        whereString += thresholdOperators_prev[i] + " "
+        whereString += thresholdParams_prev[i] + " "
+        whereString += (thresholdMetrics_prev.length-1).toFixed(0) > i ? " AND " : " "
+      }
+    }
+    
+    
+    whereString = whereString=="WHERE " ? "" : whereString
+    
+    Logger.log("whereString: " + whereString);
+    
+    if(compareRun){
+       var duringString = " DURING " + compareStartDate + "," + compareEndDate;
+    }else{
+      var duringString = " DURING " + startDate + "," + endDate;  
+    }
+    
+    var report;
+    var reportColumns = [];
+    
+    if(reportType=="AdGroup"){report=" ADGROUP_PERFORMANCE_REPORT "; reportColumns = ["AdGroupName","CampaignName","AdGroupId"]}
+    else if(reportType=="Campaign"){report=" CAMPAIGN_PERFORMANCE_REPORT "; reportColumns = ["CampaignName","CampaignId"]}
+    else{Logger.log("Error, report type not recognised. Check column " + alertLevelColumn)}
+    var query = ("SELECT " + allMetrics.join(',') + ", "+reportColumns.join(",")+
+      " FROM  " + report+
+        whereString+
+          duringString);
+    
+    Logger.log("Compare run? + query: " + compareRun + " - " + query);
+    var report = AdWordsApp.report(query);
+    var rows = report.rows();
+    while (rows.hasNext()) {
+      var row = rows.next();
+      
+      //for each alert param metric selected, store it
+      for(var alertMetric_i in alertMetrics){
+        var alertMetric = alertMetrics[alertMetric_i];
+     
+      row[alertMetric] = typeof row[alertMetric].replace === "function" ?  row[alertMetric].replace("%","") : toString(row[alertMetric]).replace("%","");
+
+      
+        if(compareRun){     
+          if(alertMetric_i==0){  compareAdGroups[row["AdGroupId"]] = {}; };
+          if("undefined" === typeof compareAdGroups[row["AdGroupId"]].beforeMetrics){compareAdGroups[row["AdGroupId"]].beforeMetrics = {};};
+          compareAdGroups[row["AdGroupId"]].beforeMetrics[alertMetric] = row[alertMetric].replace(",","");
+          compareAdGroups[row["AdGroupId"]]["AdGroupName"] = row["AdGroupName"];
+          compareAdGroups[row["AdGroupId"]]["CampaignName"] = row["CampaignName"];
+        }else{
+          if(alertMetric_i==0){  adGroups[row["AdGroupId"]] = {}; }
+          if("undefined" === typeof adGroups[row["AdGroupId"]].afterMetrics){adGroups[row["AdGroupId"]].afterMetrics = {};};
+          adGroups[row["AdGroupId"]].afterMetrics[alertMetric] = row[alertMetric].replace(",","");
+          adGroups[row["AdGroupId"]]["AdGroupName"] = row["AdGroupName"];
+          adGroups[row["AdGroupId"]]["CampaignName"] = row["CampaignName"];
+        }
+        
+      }
+      
+      
+ 
+    }
+    
+    Logger.log("compareAdGroups: " + JSON.stringify(compareAdGroups))
+  }
+
+  //pull everything into adGroups object
+  for(var ag in adGroups){
+    adGroups[ag].beforeMetrics = {};
+    if(typeof compareAdGroups[ag] != "undefined"){
+      adGroups[ag].beforeMetrics = compareAdGroups[ag].beforeMetrics;
+      adGroups[ag].compareMetrics = {};
+      for(var met in adGroups[ag].afterMetrics){
+        adGroups[ag].compareMetrics[met] = returnDifference(adGroups[ag].afterMetrics[met], adGroups[ag].beforeMetrics[met], "percent");
+      }  
+    }
+  }
+  
+
+  //remove metrics that don't match the alert params
+  for(var ag in adGroups){
+    var trueCount = 0; //count each time the comparison is true
+    for(var met_i in alertMetrics){
+       if(typeof adGroups[ag].compareMetrics != "undefined"){
+         var comp = compare(adGroups[ag].compareMetrics[alertMetrics[met_i]], alertOperators[met_i], alertParams[met_i]);
+         if(comp || adGroups[ag].compareMetrics[alertMetrics[met_i]] == "inf"){trueCount++;};
+       }
+    }
+   
+      if(trueCount!=alertMetrics.length){delete adGroups[ag];}
+  }
+
+  alertSheet.clearContents();
+ headersToSheet("Campaign Name", "AdGroup Name", alertMetrics);
+  var row = 2;
+  for(ag in adGroups){
+    metricsToSheet(row, adGroups[ag].CampaignName ,adGroups[ag].AdGroupName, adGroups[ag].beforeMetrics, adGroups[ag].afterMetrics, adGroups[ag].compareMetrics, alertMetrics);
+    row++;
+  }
+  alertSheet.sort(3, false);
+  function isEmpty(obj) {
+    return Object.keys(obj).length === 0;
+  }
+  if(!isEmpty(adGroups)){ emailSheet(emails);}
+  
+  
+}//END MAIN
+
+function headersToSheet(campaignName, adGroupName, alertMetrics){
+  var headerValues = [[campaignName, adGroupName]];
+  alertSheet.getRange("A1:B1").setValues(headerValues);
+  headerValues = [];
+  for(var met_i in alertMetrics){
+    headerValues.push(alertMetrics[met_i] + " (before)");
+    headerValues.push(alertMetrics[met_i] + " (after)");
+    headerValues.push(alertMetrics[met_i] + " % change");
+  }
+  var metricHeaders = []; metricHeaders.push(headerValues);
+  alertSheet.getRange(1, 3, 1, alertMetrics.length*3).setValues(metricHeaders);
+}
+
+function metricsToSheet(row,campaignName, adGroupName, before, after, compare, alertMetrics){
+  var headerValues = [[campaignName, adGroupName]];
+  alertSheet.getRange(row,1,1,2).setValues(headerValues);
+  headerValues = [];
+  for(var met in before){
+    headerValues.push(before[met], after[met], compare[met]);
+  }
+  var metricValues = []; metricValues.push(headerValues);
+  alertSheet.getRange(row, 3, 1, alertMetrics.length*3).setValues(metricValues);
+}
+
+function compare(metric, operator, compareMetric){
+  if(operator == ">"){
+    if(metric > compareMetric){return true}else{return false}
+  }else if(operator == "<"){
+    if(metric < compareMetric){return true}else{return false}
+  }
+}
+
+function returnDifference(number, compareNumber, type){
+  //needs to return 100% if that's the case
+  //needs to return infitiy if that's the case
+  if(number==0 && compareNumber==0){return 0;}
+  if(number=="undefined" || compareNumber=="undefined" || number=="NaN" || compareNumber=="NaN"){
+    return "undefined";
+  }else{
+    if(type=="number"){
+      return parseFloat(number-compareNumber);
+    }else if(type=="percent"){
+      return (parseFloat(number) >0 && parseFloat(compareNumber) == 0) ? "inf" : parseFloat((number-compareNumber)/compareNumber);
+    }else{
+      return "error, expected either 'percent' or 'number' as type";
+    }
+  }
+}
+
+function emailSheet(emails) {
+  
+  var subject = "AdWords Ad Group Alert";
+  var values = alertSheet.getDataRange().getValues();
+
+  var message = "You have Ad Group alerts. <br><br>";
+  message += "View dates, thresholds and parameters on the Google Spreadsheet: " + ss.getUrl() + "<br>";
+message += '<table style="background-color:white;border-collapse:collapse;" border = 1 cellpadding = 5><tr>';
+  for (var row=0;row<values.length;++row){
+    for(var col = 0;col<values[0].length;++col){
+      
+      message += isNaN(values[row][col]) ? '<td>'+values[row][col]+'</td>': '<td>'+Math.round10(values[row][col], -2)+'</td>';
+ 
+    }
+    message += '</tr><tr>';
+  }
+  message += '</tr></table>';
+  
+    for(var email_i in emails){
+   MailApp.sendEmail({
+     to: emails[email_i],
+     subject: subject,
+     htmlBody: message  
+   });
+  }
+  
+  
+}
+
+
+  function decimalAdjust(type, value, exp) {
+    // If the exp is undefined or zero...
+    if (typeof exp === 'undefined' || +exp === 0) {
+      return Math[type](value);
+    }
+    value = +value;
+    exp = +exp;
+    // If the value is not a number or the exp is not an integer...
+    if (isNaN(value) || !(typeof exp === 'number' && exp % 1 === 0)) {
+      return NaN;
+    }
+    // If the value is negative...
+    if (value < 0) {
+      return -decimalAdjust(type, -value, exp);
+    }
+    // Shift
+    value = value.toString().split('e');
+    value = Math[type](+(value[0] + 'e' + (value[1] ? (+value[1] - exp) : -exp)));
+    // Shift back
+    value = value.toString().split('e');
+    return +(value[0] + 'e' + (value[1] ? (+value[1] + exp) : exp));
+  }
+  
+  if (!Math.round10) {
+    Math.round10 = function(value, exp) {
+      return decimalAdjust('round', value, exp);
+    };
+  }
+
+
+function getHtmlTable(range){
+  var ss = range.getSheet().getParent();
+  var sheet = range.getSheet();
+  startRow = range.getRow();
+  startCol = range.getColumn();
+  lastRow = range.getLastRow();
+  lastCol = range.getLastColumn();
+
+  // Read table contents
+  var data = range.getValues();
+
+  // Get css style attributes from range
+  var fontColors = range.getFontColors();
+  var backgrounds = range.getBackgrounds();
+  var fontFamilies = range.getFontFamilies();
+  var fontSizes = range.getFontSizes();
+  var fontLines = range.getFontLines();
+  var fontWeights = range.getFontWeights();
+  var horizontalAlignments = range.getHorizontalAlignments();
+  var verticalAlignments = range.getVerticalAlignments();
+
+  // Get column widths in pixels
+  var colWidths = [];
+  for (var col=startCol; col<=lastCol; col++) { 
+    colWidths.push(sheet.getColumnWidth(col));
+  }
+  // Get Row heights in pixels
+  var rowHeights = [];
+  for (var row=startRow; row<=lastRow; row++) { 
+    rowHeights.push(sheet.getRowHeight(row));
+  }
+
+  // Future consideration...
+  var numberFormats = range.getNumberFormats();
+
+  // Build HTML Table, with inline styling for each cell
+  var tableFormat = 'style="border:1px solid black;border-collapse:collapse;text-align:center" border = 1 cellpadding = 5';
+  var html = ['<table '+tableFormat+'>'];
+  // Column widths appear outside of table rows
+  for (col=0;col<colWidths.length;col++) {
+    html.push('<col width="'+colWidths[col]+'">')
+  }
+  // Populate rows
+  for (row=0;row<data.length;row++) {
+    html.push('<tr height="'+rowHeights[row]+'">');
+    for (col=0;col<data[row].length;col++) {
+      // Get formatted data
+      var cellText = data[row][col];
+      if (cellText instanceof Date) {
+        cellText = Utilities.formatDate(
+                     cellText,
+                     ss.getSpreadsheetTimeZone(),
+                     'MMM/d EEE');
+      }
+      var style = 'style="'
+                + 'color: ' + fontColors[row][col]+'; '
+                + 'font-family: ' + fontFamilies[row][col]+'; '
+                + 'font-size: ' + fontSizes[row][col]+'; '
+                + 'font-weight: ' + fontWeights[row][col]+'; '
+                + 'background-color: ' + backgrounds[row][col]+'; '
+                + 'text-align: ' + horizontalAlignments[row][col]+'; '
+                + 'vertical-align: ' + verticalAlignments[row][col]+'; '
+                +'"';
+      html.push('<td ' + style + '>'
+                +cellText
+                +'</td>');
+    }
+    html.push('</tr>');
+  }
+  html.push('</table>');
+
+  return html.join('');
+}

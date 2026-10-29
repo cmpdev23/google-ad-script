@@ -1,0 +1,14 @@
+.vscode
+*_my_version.js
+*_dev.js
+node_modules
+tests
+broad_keyword_combinations
+PRD.md
+SETTINGS_SOURCES.md
+rsa_asset_report
+script.js
+helper.js
+example_output.csv
+DEPLOY.md
+notes.txt
