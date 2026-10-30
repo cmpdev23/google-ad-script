@@ -7,6 +7,7 @@ Ce dépôt regroupe une collection de scripts Google Ads open source et communau
 ## 📁 Structure du dépôt
 
 ```text
+├── brainlabs/                   # Scripts par Brainlabs
 ├── charlesbannister/            # Scripts par Charles Bannister
 ├── johnoconnor/                 # Scripts par John O'Connor
 └── omnicliq/                    # Scripts par Omnicliq
@@ -16,7 +17,16 @@ Ce dépôt regroupe une collection de scripts Google Ads open source et communau
 
 ## 🔍 Contenu des dossiers
 
-### 1. [`charlesbannister/`](charlesbannister)
+### 1. [`brainlabs/`](brainlabs)
+Scripts d'optimisation et d'automatisation par Brainlabs :
+- **Analyse (`Analyzing`)** : analyse de longueur des textes d'annonces et rotation des annonces.
+- **Enchères (`Bidding`)** : planification avancée (ad scheduling), enchères selon audiences in-market, appareils et emplacements.
+- **Gestion (`Managing`)** : gestion des budgets, sécurisation du match exact/phrase, détection d'annonces dupliquées, gestion des libellés et des flux shopping.
+- **Monitoring (`Monitoring`)** : contrôle de surconsommation budgétaire, alertes d'anomalies de dépenses, vérification d'URL brisées, vérification des refus Google Merchant Center (GMC) et alertes de Quality Score bas.
+- **Reporting (`Reporting`)** : outils de search query mining, créateur de heatmaps avec périphériques, insights sur les enchères et rapports sur les extensions.
+- **Tests (`Testing`)** : tests A/B et analyse de rotation des annonces.
+
+### 2. [`charlesbannister/`](charlesbannister)
 Scripts d'automatisation et d'analyse avancée par Charles Bannister :
 - **Détection d'anomalies** : détection de variations inhabituelles de dépenses et de performances.
 - **Mots-clés négatifs** : gestion automatique des mots-clés négatifs avec feuilles Google Sheets ou IA.
@@ -24,7 +34,7 @@ Scripts d'automatisation et d'analyse avancée par Charles Bannister :
 - **Performance PMax & Search Terms** : analyse de n-grams pour Performance Max et campagnes Search standards.
 - **Gestion des enchères** : ajustement des enchères basé sur des règles personnalisées.
 
-### 2. [`johnoconnor/`](johnoconnor)
+### 3. [`johnoconnor/`](johnoconnor)
 Scripts modulaires par John O'Connor :
 - **Enchères (`bidding`)** : enchères basées sur la météo, la localisation ou la distance.
 - **Gestion de campagne (`campaign-management`)** : planification horaire des annonces, gestion des budgets et gestion des stocks.
@@ -32,7 +42,7 @@ Scripts modulaires par John O'Connor :
 - **Monitoring & Alertes (`monitoring`)** : vérification des erreurs 404 / liens brisés, alertes automatiques et suivi du Quality Score.
 - **Tests A/B (`testing`)** : tests fractionnés (A/B split testing).
 
-### 3. [`omnicliq/`](omnicliq)
+### 4. [`omnicliq/`](omnicliq)
 Scripts spécialisés pour l'optimisation avancée par Omnicliq :
 - **Audits de santé** : audit complet de compte et détection d'anomalies de dépenses (niveau compte et MCC).
 - **Protection & Clôturage de requêtes (Query Fencing)** : gestion fine des requêtes concurrents, cross-adgroup et DSA.
